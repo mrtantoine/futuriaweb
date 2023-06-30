@@ -1,196 +1,102 @@
-let container;
-let camera, scene, renderer;
-let uniforms;
+"use strict";
 
-let divisor = 1 / 8;
-let textureFraction = 1 / 1;
-
-let w = 2048;
-let h = 1024;
-
-let newmouse = {
-  x: 0,
-  y: 0
-};
-
-let loader=new THREE.TextureLoader();
-let texture, rtTexture, rtTexture2;
-loader.setCrossOrigin("anonymous");
-loader.load(
-  'https://s3-us-west-2.amazonaws.com/s.cdpn.io/982762/noise.png',
-  function do_something_with_texture(tex) {
-    texture = tex;
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.minFilter = THREE.LinearFilter;
-    init();
-    animate();
-  }
-);
-
-function init() {
-  container = document.getElementById( 'container' );
-
-  camera = new THREE.Camera();
-  camera.position.z = 1;
-
-  scene = new THREE.Scene();
-
-  var geometry = new THREE.PlaneBufferGeometry( 2, 2 );
-  
-  rtTexture = new THREE.WebGLRenderTarget(window.innerWidth * textureFraction, window.innerHeight * textureFraction);
-  rtTexture2 = new THREE.WebGLRenderTarget(window.innerWidth * textureFraction, window.innerHeight * textureFraction);
-
-  uniforms = {
-    u_time: { type: "f", value: 1.0 },
-    u_resolution: { type: "v2", value: new THREE.Vector2() },
-    u_noise: { type: "t", value: texture },
-    u_buffer: { type: "t", value: rtTexture.texture },
-    u_mouse: { type: "v3", value: new THREE.Vector3() },
-    u_frame: { type: "i", value: -1. },
-    u_renderpass: { type: 'b', value: false }
-  };
-
-  var material = new THREE.ShaderMaterial( {
-    uniforms: uniforms,
-    vertexShader: document.getElementById( 'vertexShader' ).textContent,
-    fragmentShader: document.getElementById( 'fragmentShader' ).textContent
-  } );
-  material.extensions.derivatives = true;
-
-  var mesh = new THREE.Mesh( geometry, material );
-  scene.add( mesh );
-
-  renderer = new THREE.WebGLRenderer();
-  renderer.setPixelRatio( window.devicePixelRatio );
-
-  container.appendChild( renderer.domElement );
-
-  onWindowResize();
-  window.addEventListener( 'resize', onWindowResize, false );
-  
-
-  document.addEventListener('pointermove', (e)=> {
-    let ratio = window.innerHeight / window.innerWidth;
-    if(window.innerHeight > window.innerWidth) {
-      newmouse.x = (e.pageX - window.innerWidth / 2) / window.innerWidth;
-      newmouse.y = (e.pageY - window.innerHeight / 2) / window.innerHeight * -1 * ratio;
-    } else {
-      newmouse.x = (e.pageX - window.innerWidth / 2) / window.innerWidth / ratio;
-      newmouse.y = (e.pageY - window.innerHeight / 2) / window.innerHeight * -1;
-    }
+var canvas = document.getElementById('canvas'),
+  ctx = canvas.getContext('2d'),
+  w = canvas.width = window.innerWidth,
+  h = canvas.height = window.innerHeight,
     
-    e.preventDefault();
-  });
-    document.addEventListener('pointerdown', (e)=> {
-      if(e.button === 0) {
-        uniforms.u_mouse.value.z = 1;
-      } else if (e.button === 2) {
-        uniforms.u_mouse.value.w = 1;
-      }
-      e.preventDefault();
-    });
-    document.addEventListener('pointerup', (e)=> {
-      if(e.button === 0) {
-        uniforms.u_mouse.value.z = 0;
-      } else if (e.button === 2) {
-        uniforms.u_mouse.value.w = 0;
-      }
-      e.preventDefault();
-    });
-}
+  hue = 217,
+  stars = [],
+  count = 0,
+  maxStars = 1400;
 
-function onWindowResize( event ) {
-  w = 2048;
-  h = 1024;
-  w = window.innerWidth;
-  h = window.innerHeight;
-  
-  renderer.setSize( w, h );
-  uniforms.u_resolution.value.x = renderer.domElement.width;
-  uniforms.u_resolution.value.y = renderer.domElement.height;
-  
-  uniforms.u_frame.value = 0;
-  
-  rtTexture = new THREE.WebGLRenderTarget(w * textureFraction, h * textureFraction);
-  rtTexture2 = new THREE.WebGLRenderTarget(w * textureFraction, h * textureFraction);
-}
+// Thanks @jackrugile for the performance tip! https://codepen.io/jackrugile/pen/BjBGoM
+// Cache gradient
+var canvas2 = document.createElement('canvas'),
+    ctx2 = canvas2.getContext('2d');
+    canvas2.width = 100;
+    canvas2.height = 100;
+var half = canvas2.width/2,
+    gradient2 = ctx2.createRadialGradient(half, half, 0, half, half, half);
+    gradient2.addColorStop(0.025, '#fff');
+    gradient2.addColorStop(0.1, 'hsl(' + hue + ', 61%, 33%)');
+    gradient2.addColorStop(0.25, 'hsl(' + hue + ', 64%, 6%)');
+    gradient2.addColorStop(1, 'transparent');
 
-function animate(delta) {
-  requestAnimationFrame( animate );
-  render(delta);
-}
+    ctx2.fillStyle = gradient2;
+    ctx2.beginPath();
+    ctx2.arc(half, half, half, 0, Math.PI * 2);
+    ctx2.fill();
 
+// End cache
 
-
-
-
-
-let capturer = new CCapture( { 
-  verbose: true, 
-  framerate: 60,
-  // motionBlurFrames: 4,
-  quality: 90,
-  format: 'webm',
-  workersPath: 'js/'
- } );
-let capturing = false;
-
-isCapturing = function(val) {
-  if(val === false && window.capturing === true) {
-    capturer.stop();
-    capturer.save();
-  } else if(val === true && window.capturing === false) {
-    capturer.start();
+function random(min, max) {
+  if (arguments.length < 2) {
+    max = min;
+    min = 0;
   }
-  capturing = val;
-}
-toggleCapture = function() {
-  isCapturing(!capturing);
-}
-
-window.addEventListener('keyup', function(e) { if(e.keyCode == 68) toggleCapture(); });
-
-let then = 0;
-function renderTexture(delta) {
-  // let ov = uniforms.u_buff.value;
   
-  let odims = uniforms.u_resolution.value.clone();
-  uniforms.u_resolution.value.x = w * textureFraction;
-  uniforms.u_resolution.value.y = h * textureFraction;
-
-  uniforms.u_buffer.value = rtTexture2.texture;
-  
-  uniforms.u_renderpass.value = true;
-  
-//   rtTexture = rtTexture2;
-//   rtTexture2 = buffer;
-  
-  window.rtTexture = rtTexture;
-  renderer.setRenderTarget(rtTexture);
-  renderer.render( scene, camera, rtTexture, true );
-  
-  let buffer = rtTexture
-  rtTexture = rtTexture2;
-  rtTexture2 = buffer;
-
-  // uniforms.u_buff.value = ov;
-
-  uniforms.u_buffer.value = rtTexture.texture;
-  uniforms.u_resolution.value = odims;
-  uniforms.u_renderpass.value = false;
-}
-function render(delta) {
-  uniforms.u_frame.value++;
-  
-  uniforms.u_mouse.value.x += ( newmouse.x - uniforms.u_mouse.value.x ) * divisor;
-  uniforms.u_mouse.value.y += ( newmouse.y - uniforms.u_mouse.value.y ) * divisor;
-  
-  uniforms.u_time.value = delta * 0.0005;
-  renderer.render( scene, camera );
-  renderTexture();
-  
-  if(capturing) {
-    capturer.capture( renderer.domElement );
+  if (min > max) {
+    var hold = max;
+    max = min;
+    min = hold;
   }
+
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+
+function maxOrbit(x,y) {
+  var max = Math.max(x,y),
+      diameter = Math.round(Math.sqrt(max*max + max*max));
+  return diameter/2;
+}
+
+var Star = function() {
+
+  this.orbitRadius = random(maxOrbit(w,h));
+  this.radius = random(60, this.orbitRadius) / 12;
+  this.orbitX = w / 2;
+  this.orbitY = h / 2;
+  this.timePassed = random(0, maxStars);
+  this.speed = random(this.orbitRadius) / 50000;
+  this.alpha = random(2, 10) / 10;
+
+  count++;
+  stars[count] = this;
+}
+
+Star.prototype.draw = function() {
+  var x = Math.sin(this.timePassed) * this.orbitRadius + this.orbitX,
+      y = Math.cos(this.timePassed) * this.orbitRadius + this.orbitY,
+      twinkle = random(10);
+
+  if (twinkle === 1 && this.alpha > 0) {
+    this.alpha -= 0.05;
+  } else if (twinkle === 2 && this.alpha < 1) {
+    this.alpha += 0.05;
+  }
+
+  ctx.globalAlpha = this.alpha;
+    ctx.drawImage(canvas2, x - this.radius / 2, y - this.radius / 2, this.radius, this.radius);
+  this.timePassed += this.speed;
+}
+
+for (var i = 0; i < maxStars; i++) {
+  new Star();
+}
+
+function animation() {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = 'hsla(' + hue + ', 64%, 6%, 1)';
+    ctx.fillRect(0, 0, w, h)
+  
+  ctx.globalCompositeOperation = 'lighter';
+  for (var i = 1, l = stars.length; i < l; i++) {
+    stars[i].draw();
+  };  
+  
+  window.requestAnimationFrame(animation);
+}
+
+animation();
